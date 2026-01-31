@@ -61,11 +61,14 @@ def login():
     if user and user.check_password(data['password']):
         token = create_access_token(identity=str(user.id))
         
+        # === FIX: Use Relative Paths (Works on Local AND Cloud) ===
         avatar_url = user.avatar
         if avatar_url and not avatar_url.startswith('http') and not avatar_url.startswith('/'):
-             avatar_url = f"http://127.0.0.1:5000{user.avatar}"
+            # If it's just "image.png", make it "/static/avatars/image.png"
+            avatar_url = f"/static/avatars/{user.avatar}"
         elif avatar_url and avatar_url.startswith('/'):
-             avatar_url = f"http://127.0.0.1:5000{avatar_url}"
+            # If it's already "/static/...", leave it alone.
+            avatar_url = user.avatar
 
         return jsonify({
             "token": token,
