@@ -1,0 +1,8 @@
+# Python bytecode files
+
+__pycache__/
+instance/
+*.db
+*.sqlite3
+.env
+venv/

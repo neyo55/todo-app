@@ -1,0 +1,182 @@
+kbneyo55@gmail.com
+ProTodo@2026
+
+
+
+
+
+# Step to run the app locally 
+
+# Step 1
+
+# install requirements
+pip install -r requirements.txt
+
+# install for time zone
+pip install tzdata
+
+# To upgrade pip to new version
+python.exe -m pip install --upgrade pip
+
+# Step 2
+
+cd backend
+python app.py
+
+
+################# Virtual environment for windows ########################
+python -m venv todo
+source todo/Scripts/activate
+pip install -r requirements.txt
+
+# To save the packages installed to requirements.txt
+pip freeze > requirements.txt
+
+
+
+
+################# All this is needed to run on Ubuntu server ##############
+# Command to install python3 virtual environment if not installed already
+sudo apt install python3-venv
+
+# Command to create a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Creating it using Todo as the virtual environment
+python3 -m venv todo
+source todo/bin/activate
+
+# Command to deactivate the virtual environment
+deactivate
+
+# Command to install requirements and gunicorn as it is production grade not 'python app.py' we run on local server
+pip install -r requirements.txt
+pip install gunicorn
+
+# Re-create the .env file that was ignored by Git
+nano .env
+
+# Command to create a systemd service file 
+sudo nano /etc/systemd/system/protodo.service
+
+# The systemd service file #########################
+[Unit]
+Description=Gunicorn instance to serve ProTodo
+After=network.target
+
+[Service]
+User=ubuntu
+Group=www-data
+WorkingDirectory=/home/ubuntu/ProTodo-App/backend
+# FIXED: Changed 'venv' to 'todo' in the next two lines as todo is the virtual env name not venv#####
+Environment="PATH=/home/ubuntu/ProTodo-App/backend/todo/bin"
+EnvironmentFile=/home/ubuntu/ProTodo-App/backend/.env
+ExecStart=/home/ubuntu/ProTodo-App/backend/todo/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 app:app
+# ExecStart=/home/ubuntu/ProTodo-App/backend/todo/bin/gunicorn --workers 3 --bind 127.0.0.1:5000 wsgi:app
+
+[Install]
+WantedBy=multi-user.target
+
+#### End of the service file ##########
+
+# Command to Start and Enable the Service 
+sudo systemctl start protodo
+sudo systemctl enable protodo
+
+# 1. Refresh Systemd configuration
+sudo systemctl daemon-reload
+
+# 2. Restart the ProTodo service
+sudo systemctl restart protodo
+
+# 3. Check the status (Look for the green dot!)
+sudo systemctl status protodo
+
+# Command to remove the default Nginx page 
+sudo rm /etc/nginx/sites-enabled/default
+
+# Command to edit Nginx 
+sudo nano /etc/nginx/sites-available/protodo
+
+# This command Link your new site (overwrites if broken)
+sudo ln -sf /etc/nginx/sites-available/protodo /etc/nginx/sites-enabled/
+
+# Command to Check for typos
+sudo nginx -t
+# (It should say "syntax is ok")
+
+# Command to Restart Nginx
+sudo systemctl restart nginx
+
+# This command changes to the app IP and works even the ip of AWS changes
+server {
+    listen 80;
+    server_name _;
+
+    # 1. SERVE FRONTEND (HTML/CSS/JS)
+    location / {
+        root /home/ubuntu/ProTodo-App/frontend;
+        index index.html; #### Remember to change index.html to the first of your html (login.html) so Nginx can take note 
+        try_files $uri $uri/ /login.html;
+    }
+
+    # 2. PROXY BACKEND (API Requests)
+    location /api {
+        include proxy_params;
+        proxy_pass http://127.0.0.1:5000;
+    }
+}
+
+##################################################
+
+# Solution to Nginx (500 Internal Server Error) it is usually permission issues 
+# Allow everyone (including Nginx) to "peek" inside your home folders
+chmod 755 /home/ubuntu
+chmod 755 /home/ubuntu/ProTodo-App
+chmod 755 /home/ubuntu/ProTodo-App/frontend
+
+# Command to view Nginx error log
+sudo tail -n 20 /var/log/nginx/error.log
+
+#####################################################################
+
+# To use SCP copy command to copy files from my local system to the server 
+scp -i <key> -r <folder_to_copy> <user>@<ip>:<destination>
+scp -i protodo-key -r ~/Desktop/backend ubuntu@3.253.86.104:/home/ubuntu/
+
+
+# Command to install request
+pip install requests
+
+
+############# Observation and Complaint #############
+I noticed the time difference -1 hour ( I picked 17:55 on the frontend and when i got email it mentioned 16:55) DONE
+I want to add more details to the UI (Make it more robust/production standard) DONE
+I want to add email notification option of 30mins or 60mins before due time so the user can be prepared DONE
+I also think of adding SMS alert (optional)
+I also want to add delete all todo or delete as disered by the user i.e option to mark all, delete selected todo DONE
+I also want to add copy right below the page, contact us, live chat with support 
+the rendering should be for all devices, mobile, tablet, laptop. et.c all screen sizes. DONE
+I also want to enable view password when signing up and login DONE 
+I also want it to have individual account for users who signed up and logged in, it is from there they can logout and change account settings, user profile editing and forgot password 
+
+
+
+Twilio or a similar service for SMS integration
+I want to also implement monitoring and logging to the pipeline
+
+
+Here are a few common "polish" areas we could look at if you don't have a list yet:
+
+Mobile Responsiveness: Double-checking how it looks if you shrink your browser window to the size of a phone.
+
+I want to add the password security by including minimum of 8 characters with atleast 1 number, 1 special character and 1 capital letter
+
+I also want to inlcude monitoring and logging in the pipeline 
+
+
+
+
+
+

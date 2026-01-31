@@ -1,0 +1,17 @@
+ProTodo/
+│
+├── backend/                # Move your Flask files here
+│   ├── app.py
+│   ├── models.py
+│   ├── auth.py
+│   ├── ...
+│   ├── .env                # <--- NEVER PUSH THIS
+│   └── requirements.txt
+│
+├── frontend/               # Move your HTML/CSS/JS here
+│   ├── index.html
+│   ├── style.css
+│   └── script.js
+│
+├── .gitignore              # The most important file!
+└── README.md

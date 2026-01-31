@@ -1,0 +1,879 @@
+// script.js - ProTodo Advanced Task Manager
+// Shared across: login.html, signup.html, and app.html
+// Last Updated: January 03, 2026
+// Fully optimized and debugged for local development
+
+// === API CONFIGURATION ===
+// Use IP instead of localhost to avoid DNS/CORS issues on some systems
+const API_BASE = 'http://127.0.0.1:5000/api';  // ← Critical for avoiding 404 OPTIONS
+
+let todos = [];                    // In-memory todo list
+let currentView = 'todos';         // Current tab: 'todos' or 'dashboard'
+
+// Safe DOM selector
+function $(selector) {
+    return document.querySelector(selector);
+}
+
+// ==================================================================
+// DARK MODE - Shared across all pages
+// ==================================================================
+function loadDarkMode() {
+    const saved = localStorage.getItem('darkMode');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = saved === 'true' || (saved === null && prefersDark);
+
+    if (isDark) document.body.classList.add('dark-mode');
+
+    const btn = $('#dark-mode-toggle');
+    if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+}
+
+function toggleDarkMode() {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+    localStorage.setItem('darkMode', isDark);
+
+    const btn = $('#dark-mode-toggle');
+    if (btn) btn.textContent = isDark ? '☀️' : '🌙';
+}
+
+// ==================================================================
+// AUTH PAGES (login.html & signup.html)
+// ==================================================================
+function initAuthPage(mode) {
+    loadDarkMode();
+
+    // Auto-redirect if already logged in
+    if (localStorage.getItem('token')) {
+        window.location.href = 'app.html';
+        return;
+    }
+
+    const loginBtn = $('#login-btn');
+    const signupBtn = $('#signup-btn');
+
+    if (mode === 'login' && loginBtn) loginBtn.addEventListener('click', handleLogin);
+    if (mode === 'signup' && signupBtn) signupBtn.addEventListener('click', handleSignup);
+}
+
+async function handleLogin() {
+    const email = $('#login-email')?.value.trim();
+    const password = $('#login-password')?.value.trim();
+
+    if (!email || !password) return alert('Email and password required');
+
+    try {
+        console.log('Attempting login...');
+        const res = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        console.log('Login response:', res.status, data);
+
+        if (res.ok) {
+            localStorage.setItem('token', data.token);
+            window.location.href = 'app.html';
+        } else {
+            alert(data.message || 'Login failed');
+        }
+    } catch (err) {
+        console.error('Login network error:', err);
+        alert('Network error — check backend is running');
+    }
+}
+
+async function handleSignup() {
+    const name = $('#signup-name')?.value.trim();
+    const email = $('#signup-email')?.value.trim();
+    const password = $('#signup-password')?.value.trim();
+
+    if (!email || !password) return alert('Email and password required');
+
+    try {
+        console.log('Attempting signup...');
+        const res = await fetch(`${API_BASE}/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name || '', email, password })
+        });
+
+        const data = await res.json();
+        console.log('Signup response:', res.status, data);
+
+        if (res.ok) {
+            alert('Account created! Please log in.');
+            window.location.href = 'login.html';
+        } else {
+            alert(data.message || 'Signup failed');
+        }
+    } catch (err) {
+        console.error('Signup network error:', err);
+        alert('Network error');
+    }
+}
+
+// ==================================================================
+// MAIN APP (app.html)
+// ==================================================================
+function initAppPage() {
+    loadDarkMode();
+
+    // === STRICT AUTHENTICATION ===
+    if (!localStorage.getItem('token')) {
+        console.log('No token found — redirecting to login');
+        window.location.href = 'login.html';
+        return;
+    }
+
+    console.log('User authenticated — loading app');
+
+    // Shared listeners
+    $('#dark-mode-toggle')?.addEventListener('click', toggleDarkMode);
+    $('#logout-btn')?.addEventListener('click', handleLogout);
+
+    setupAppListeners();
+    loadTodos();
+
+    // Enable push notifications
+    enablePushIfSupported();
+}
+
+function handleLogout() {
+    localStorage.removeItem('token');
+    window.location.href = 'login.html';
+}
+
+function setupAppListeners() {
+    $('#add-todo-btn')?.addEventListener('click', handleAddTodo);
+    $('#search-input')?.addEventListener('input', debounce(renderTodos, 300));
+    $('#filter-category')?.addEventListener('change', renderTodos);
+    $('#sort-by')?.addEventListener('change', renderTodos);
+    $('#export-btn')?.addEventListener('click', exportTodos);
+    $('#import-btn')?.addEventListener('click', createImportInput);
+
+    document.querySelectorAll('.tabs button').forEach(tab => {
+        tab.addEventListener('click', () => switchView(tab.dataset.view));
+    });
+}
+
+// Debounce for search performance
+function debounce(func, delay) {
+    let timeout;
+    return (...args) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(null, args), delay);
+    };
+}
+
+// ==================================================================
+// TODO CRUD OPERATIONS
+// ==================================================================
+async function loadTodos() {
+    console.log('Loading todos from backend...');
+    try {
+        const res = await fetch(`${API_BASE}/todos`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+
+        if (res.ok) {
+            todos = await res.json();
+            localStorage.setItem('cachedTodos', JSON.stringify(todos));
+            console.log(`Loaded ${todos.length} todos`);
+        } else {
+            console.warn('Failed to load todos:', res.status);
+            loadOfflineTodos();
+        }
+    } catch (err) {
+        console.error('Network error loading todos:', err);
+        loadOfflineTodos();
+    }
+
+    renderTodos();
+    populateCategoryFilter();
+    updateDashboard();
+}
+
+function loadOfflineTodos() {
+    const cached = localStorage.getItem('cachedTodos');
+    if (cached) {
+        todos = JSON.parse(cached);
+        console.log(`Loaded ${todos.length} cached todos (offline mode)`);
+    }
+}
+
+async function handleAddTodo() {
+    const title = $('#todo-title')?.value.trim();
+    if (!title) return alert('Title is required');
+
+    const newTodo = {
+        title,
+        due_date: $('#todo-due')?.value || null,
+        priority: $('#todo-priority')?.value || 'medium',
+        category: $('#todo-category')?.value || 'other',
+        tags: $('#todo-tags')?.value.split(',').map(t => t.trim()).filter(Boolean),
+        notes: $('#todo-notes')?.value.trim() || null,
+        completed: false
+    };
+
+    console.log('Creating new todo:', newTodo);
+
+    try {
+        const res = await fetch(`${API_BASE}/todos`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(newTodo)
+        });
+
+        const data = await res.json();
+        console.log('Create response:', res.status, data);
+
+        if (res.ok) {
+            todos.unshift({ ...newTodo, id: data.id });
+            console.log('Todo created successfully');
+        } else {
+            throw new Error(data.message || 'Create failed');
+        }
+    } catch (err) {
+        console.error('Failed to create todo:', err);
+        alert('Saved locally (offline)');
+        todos.unshift({ ...newTodo, id: Date.now(), offline: true });
+        localStorage.setItem('cachedTodos', JSON.stringify(todos));
+    }
+
+    clearAddForm();
+    renderTodos();
+    updateDashboard();
+}
+
+function clearAddForm() {
+    $('#todo-title').value = '';
+    $('#todo-due').value = '';
+    $('#todo-tags').value = '';
+    $('#todo-notes').value = '';
+    $('#todo-title')?.focus();
+}
+
+// [Rest of rendering, dashboard, export, push functions remain unchanged — they're already excellent]
+
+// ... [Keep your existing renderTodos, updateDashboard, exportTodos, push functions as-is]
+
+
+#####################################################
+#####################################################
+#######################################################
+
+
+
+// script.js - ProTodo Advanced Task Manager
+// Shared across: login.html, signup.html, and app.html
+// Last Updated: January 01, 2026
+// Features: Authentication, Full Todo CRUD, Search, Filters, Sorting, Tags, Dark Mode, Dashboard, Export/Import, Offline Support
+
+// For local testing 
+const API_BASE = 'http://127.0.0.1:5000/api';
+
+
+// For EC2 setup
+//const API_BASE = 'http://your-backend-ec2-ip:5000/api'; // <<< CHANGE THIS TO YOUR ACTUAL BACKEND URL LATER
+let todos = [];           // Array holding all current todos (fetched or cached)
+let currentView = 'todos'; // Tracks current tab: 'todos' or 'dashboard'
+
+// Helper function for safe DOM selection
+function $(selector) {
+    return document.querySelector(selector);
+}
+
+// ==================================================================
+// DARK MODE - Shared across ALL pages
+// ==================================================================
+function loadDarkMode() {
+    const saved = localStorage.getItem('darkMode');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = saved === 'true' || (saved === null && prefersDark);
+
+    if (isDark) {
+        document.body.classList.add('dark-mode');
+    }
+
+    const toggleBtn = $('#dark-mode-toggle');
+    if (toggleBtn) {
+        toggleBtn.textContent = isDark ? '☀️' : '🌙';
+    }
+}
+
+function toggleDarkMode() {
+    document.body.classList.toggle('dark-mode');
+    const isDark = document.body.classList.contains('dark-mode');
+    localStorage.setItem('darkMode', isDark);
+
+    const toggleBtn = $('#dark-mode-toggle');
+    if (toggleBtn) {
+        toggleBtn.textContent = isDark ? '☀️' : '🌙';
+    }
+}
+
+// ==================================================================
+// AUTHENTICATION PAGES (login.html & signup.html)
+// ==================================================================
+function initAuthPage(mode) {
+    loadDarkMode();
+
+    // If user is already logged in, send them to the main app
+    if (localStorage.getItem('token')) {
+        window.location.href = 'app.html';
+        return;
+    }
+
+    // Attach login/signup button listeners based on current page
+    const loginBtn = $('#login-btn');
+    const signupBtn = $('#signup-btn');
+
+    if (mode === 'login' && loginBtn) {
+        loginBtn.addEventListener('click', handleLogin);
+    }
+    if (mode === 'signup' && signupBtn) {
+        signupBtn.addEventListener('click', handleSignup);
+    }
+}
+
+// Login handler
+async function handleLogin() {
+    const email = $('#login-email')?.value.trim();
+    const password = $('#login-password')?.value.trim();
+
+    if (!email || !password) {
+        alert('Please enter both email and password');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            localStorage.setItem('token', data.token);
+            window.location.href = 'app.html';
+        } else {
+            alert(data.message || 'Login failed');
+        }
+    } catch (err) {
+        alert('Network error. Please try again.');
+    }
+}
+
+// Signup handler
+async function handleSignup() {
+    const name = $('#signup-name')?.value.trim();
+    const email = $('#signup-email')?.value.trim();
+    const password = $('#signup-password')?.value.trim();
+
+    if (!email || !password) {
+        alert('Email and password are required');
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_BASE}/signup`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name || '', email, password })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            alert('Account created successfully! Please log in.');
+            window.location.href = 'login.html';
+        } else {
+            alert(data.message || 'Signup failed');
+        }
+    } catch (err) {
+        alert('Network error. Please try again.');
+    }
+}
+
+// ==================================================================
+// MAIN APP PAGE (app.html)
+// ==================================================================
+function initAppPage() {
+    loadDarkMode();
+
+    // TEMPORARY FOR TESTING: Allow access without login
+    // Remove or comment this block when backend is ready
+    if (!localStorage.getItem('token')) {
+        // console.log('Preview mode: No token found (normal during development)');
+        console.log('No token - redirecting to login');
+        // Uncomment the line below when backend is live
+        window.location.href = 'login.html';
+    }
+
+    // Attach shared UI listeners
+    $('#dark-mode-toggle')?.addEventListener('click', toggleDarkMode);
+    $('#logout-btn')?.addEventListener('click', handleLogout);
+
+    // Setup all app-specific listeners
+    setupAppListeners();
+
+    // Load initial data
+    loadTodos();
+
+    // Register service worker for push notifications
+    enablePushIfSupported();
+}
+
+// Logout handler
+function handleLogout() {
+    localStorage.removeItem('token');
+    window.location.href = 'login.html';
+}
+
+// Attach all event listeners specific to the main app
+function setupAppListeners() {
+    $('#add-todo-btn')?.addEventListener('click', handleAddTodo);
+    $('#search-input')?.addEventListener('input', renderTodos);
+    $('#filter-category')?.addEventListener('change', renderTodos);
+    $('#sort-by')?.addEventListener('change', renderTodos);
+    $('#export-btn')?.addEventListener('click', exportTodos);
+    $('#import-btn')?.addEventListener('click', createImportInput);
+
+    // Tab navigation
+    document.querySelectorAll('.tabs button').forEach(tab => {
+        tab.addEventListener('click', () => switchView(tab.dataset.view));
+    });
+}
+
+// ==================================================================
+// TAB SWITCHING (Todos <-> Dashboard)
+// ==================================================================
+function switchView(view) {
+    currentView = view;
+
+    // Update active tab styling
+    document.querySelectorAll('.tabs button').forEach(t => {
+        t.classList.toggle('active', t.dataset.view === view);
+    });
+
+    // Show/hide relevant sections
+    $('#todos-view')?.classList.toggle('hidden', view !== 'todos');
+    $('#dashboard-view')?.classList.toggle('hidden', view !== 'dashboard');
+
+    // Refresh dashboard when opened
+    if (view === 'dashboard') updateDashboard();
+}
+
+// ==================================================================
+// TODO DATA MANAGEMENT
+// ==================================================================
+async function loadTodos() {
+    try {
+        const res = await fetch(`${API_BASE}/todos`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+        if (res.ok) {
+            todos = await res.json();
+            localStorage.setItem('cachedTodos', JSON.stringify(todos));
+        }
+    } catch (err) {
+        console.warn('Offline mode: Loading cached todos');
+        const cached = localStorage.getItem('cachedTodos');
+        if (cached) todos = JSON.parse(cached);
+    }
+
+    renderTodos();
+    populateCategoryFilter();
+    updateDashboard();
+}
+
+// Add new todo
+async function handleAddTodo() {
+    const title = $('#todo-title')?.value.trim();
+    if (!title) {
+        alert('Todo title is required');
+        return;
+    }
+
+    const newTodo = {
+        title,
+        due_date: $('#todo-due')?.value || null,
+        priority: $('#todo-priority')?.value || 'medium',
+        category: $('#todo-category')?.value || 'other',
+        tags: $('#todo-tags')?.value.split(',').map(t => t.trim()).filter(t => t),
+        notes: $('#todo-notes')?.value.trim(),
+        completed: false
+    };
+
+    try {
+        const res = await fetch(`${API_BASE}/todos`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(newTodo)
+        });
+        if (res.ok) {
+            const data = await res.json();
+            todos.unshift({ ...newTodo, id: data.id });
+        }
+    } catch (err) {
+        alert('Offline: Todo saved locally');
+        todos.unshift({ ...newTodo, id: Date.now(), offline: true });
+        localStorage.setItem('cachedTodos', JSON.stringify(todos));
+    }
+
+    clearAddForm();
+    renderTodos();
+    updateDashboard();
+}
+
+function clearAddForm() {
+    $('#todo-title').value = '';
+    $('#todo-due').value = '';
+    $('#todo-tags').value = '';
+    $('#todo-notes').value = '';
+    $('#todo-title')?.focus();
+}
+
+// ==================================================================
+// RENDERING TODOS
+// ==================================================================
+function renderTodos() {
+    const list = $('#todo-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+    let filtered = [...todos];
+
+    // Search filter
+    const query = $('#search-input')?.value.toLowerCase() || '';
+    if (query) {
+        filtered = filtered.filter(t =>
+            t.title.toLowerCase().includes(query) ||
+            (t.notes && t.notes.toLowerCase().includes(query)) ||
+            (t.tags && t.tags.some(tag => tag.toLowerCase().includes(query)))
+        );
+    }
+
+    // Category filter
+    const selectedCat = $('#filter-category')?.value;
+    if (selectedCat && selectedCat !== 'all') {
+        filtered = filtered.filter(t => t.category === selectedCat);
+    }
+
+    // Sorting
+    const sortBy = $('#sort-by')?.value || 'created';
+    filtered.sort((a, b) => {
+        if (sortBy === 'due') {
+            return (a.due_date || '') > (b.due_date || '') ? 1 : -1;
+        }
+        if (sortBy === 'priority') {
+            return priorityValue(b.priority) - priorityValue(a.priority);
+        }
+        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+
+    // Empty state
+    if (filtered.length === 0) {
+        $('#empty-state')?.classList.remove('hidden');
+        return;
+    }
+    $('#empty-state')?.classList.add('hidden');
+
+    // Render each todo
+    filtered.forEach(todo => {
+        const li = document.createElement('li');
+        li.className = `todo-item ${todo.completed ? 'completed' : ''}`;
+
+        const dueText = todo.due_date ? new Date(todo.due_date).toLocaleString() : 'No due date';
+        const tagsHTML = todo.tags?.length ? todo.tags.map(t => `<span class="tag">${t}</span>`).join('') : '';
+
+        li.innerHTML = `
+            <input type="checkbox" ${todo.completed ? 'checked' : ''}>
+            <div class="todo-content">
+                <div class="todo-title" contenteditable="false">${todo.title}</div>
+                <div class="todo-meta">
+                    <span>${dueText}</span> • 
+                    <span class="priority-${todo.priority}">${todo.priority.toUpperCase()}</span> • 
+                    <span>${todo.category}</span>
+                    ${tagsHTML ? ' • ' + tagsHTML : ''}
+                </div>
+                ${todo.notes ? `<div class="todo-notes">${todo.notes}</div>` : ''}
+            </div>
+            <div class="todo-actions">
+                <button aria-label="Edit">✏️</button>
+                <button aria-label="Delete">🗑️</button>
+            </div>
+        `;
+
+        // Attach event listeners
+        li.querySelector('input[type="checkbox"]').addEventListener('change', () => toggleComplete(todo));
+        li.querySelector('.todo-title').addEventListener('dblclick', () => makeEditable(li, todo));
+        li.querySelectorAll('.todo-actions button')[0].addEventListener('click', () => makeEditable(li, todo));
+        li.querySelectorAll('.todo-actions button')[1].addEventListener('click', () => deleteTodo(todo));
+
+        list.appendChild(li);
+    });
+}
+
+function priorityValue(p) {
+    return { high: 3, medium: 2, low: 1 }[p] || 0;
+}
+
+// Toggle completion
+async function toggleComplete(todo) {
+    todo.completed = !todo.completed;
+    await saveTodoUpdate(todo, { completed: todo.completed });
+    renderTodos();
+    updateDashboard();
+}
+
+// Inline title editing
+function makeEditable(li, todo) {
+    const titleEl = li.querySelector('.todo-title');
+    if (titleEl.contentEditable === 'true') {
+        titleEl.contentEditable = 'false';
+        todo.title = titleEl.textContent.trim();
+        if (todo.title) saveTodoUpdate(todo, { title: todo.title });
+    } else {
+        titleEl.contentEditable = 'true';
+        titleEl.focus();
+    }
+}
+
+// Delete todo
+async function deleteTodo(todo) {
+    if (!confirm('Delete this todo permanently?')) return;
+
+    todos = todos.filter(t => t.id !== todo.id);
+    try {
+        await fetch(`${API_BASE}/todos/${todo.id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        });
+    } catch (err) {
+        localStorage.setItem('cachedTodos', JSON.stringify(todos));
+    }
+    renderTodos();
+    updateDashboard();
+}
+
+// Generic update sender
+async function saveTodoUpdate(todo, updates) {
+    Object.assign(todo, updates);
+    try {
+        await fetch(`${API_BASE}/todos/${todo.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(updates)
+        });
+    } catch (err) {
+        localStorage.setItem('cachedTodos', JSON.stringify(todos));
+    }
+}
+
+// ==================================================================
+// DASHBOARD & CHART
+// ==================================================================
+function updateDashboard() {
+    if (!$('#dashboard-view')) return;
+
+    const completed = todos.filter(t => t.completed).length;
+    const overdue = todos.filter(t => t.due_date && new Date(t.due_date) < new Date() && !t.completed).length;
+    const rate = todos.length ? Math.round((completed / todos.length) * 100) : 0;
+
+    $('#stat-total').textContent = todos.length;
+    $('#stat-completed').textContent = completed;
+    $('#stat-overdue').textContent = overdue;
+    $('#stat-rate').textContent = rate + '%';
+
+    renderCategoryChart();
+}
+
+function renderCategoryChart() {
+    const canvas = $('#category-chart');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const counts = {};
+    todos.forEach(t => counts[t.category] = (counts[t.category] || 0) + 1);
+
+    const data = Object.values(counts);
+    const labels = Object.keys(counts);
+    const colors = ['#667eea', '#f093fb', '#f5576c', '#4ecdc4', '#45b649'];
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let startAngle = 0;
+    const total = data.reduce((a, b) => a + b, 0) || 1;
+
+    data.forEach((value, i) => {
+        const sliceAngle = (value / total) * 2 * Math.PI;
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.beginPath();
+        ctx.moveTo(150, 150);  // Center adjusted for 300x300 canvas
+        ctx.arc(150, 150, 120, startAngle, startAngle + sliceAngle);
+        ctx.closePath();
+        ctx.fill();
+
+        // Label
+        const textAngle = startAngle + sliceAngle / 2;
+        const x = 150 + 90 * Math.cos(textAngle);
+        const y = 150 + 90 * Math.sin(textAngle);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(labels[i], x, y);
+
+        startAngle += sliceAngle;
+    });
+}
+
+function populateCategoryFilter() {
+    const select = $('#filter-category');
+    if (!select) return;
+
+    const categories = [...new Set(todos.map(t => t.category))];
+    select.innerHTML = '<option value="all">All Categories</option>';
+    categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+        select.appendChild(opt);
+    });
+}
+
+// ==================================================================
+// EXPORT TO CSV & IMPORT FROM JSON (CSV import later if needed)
+// ==================================================================
+function exportTodos() {
+    if (todos.length === 0) {
+        alert('No todos to export!');
+        return;
+    }
+
+    let csv = 'ID,Title,Due Date,Priority,Category,Tags,Notes,Completed,Created At\n';
+
+    todos.forEach(todo => {
+        const escape = (field) => {
+            if (field == null) return '';
+            let str = String(field);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                str = `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        };
+
+        const tags = todo.tags ? todo.tags.join('; ') : '';
+        const due = todo.due_date ? new Date(todo.due_date).toLocaleString() : '';
+        const completed = todo.completed ? 'Yes' : 'No';
+
+        csv += `${todo.id},${escape(todo.title)},${escape(due)},` +
+               `${todo.priority},${todo.category},${escape(tags)},` +
+               `${escape(todo.notes)},${completed},${new Date(todo.created_at).toLocaleString()}\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prototo-export-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function createImportInput() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';  // Keep JSON import for now (CSV import more complex)
+    input.onchange = e => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                const imported = JSON.parse(ev.target.result);
+                // Basic validation
+                if (Array.isArray(imported)) {
+                    todos = imported;
+                    localStorage.setItem('cachedTodos', JSON.stringify(todos));
+                    renderTodos();
+                    updateDashboard();
+                    populateCategoryFilter();
+                    alert('Todos imported successfully from JSON!');
+                } else {
+                    alert('Invalid file format');
+                }
+            } catch (err) {
+                alert('Invalid JSON file');
+            }
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+// ==================================================================
+// BROWSER PUSH NOTIFICATIONS (Local Testing Version)
+// ==================================================================
+
+let pushSubscribed = false;
+
+async function subscribeToPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        console.log('Push notifications not supported in this browser');
+        return;
+    }
+
+    try {
+        // Register the service worker
+        const registration = await navigator.serviceWorker.register('sw.js');
+        console.log('Service Worker registered successfully');
+
+        // Request notification permission
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+            console.log('Notification permission denied');
+            alert('Push notifications denied. You can enable them in browser settings.');
+            return;
+        }
+
+        // Subscribe (local only - no VAPID keys needed for basic testing)
+        const subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            // applicationServerKey not required for local testing in some browsers
+        });
+
+        pushSubscribed = true;
+        console.log('Push subscription successful', subscription);
+        alert('Browser push notifications enabled! 🎉\nYou will get reminders even if the app is closed (test by adding a due todo and waiting).');
+    } catch (err) {
+        console.error('Push subscription failed:', err);
+        alert('Push setup failed (common in local testing). Full push works better on HTTPS/deployed site.');
+    }
+}
+
+// Prompt user to enable push after login
+function enablePushIfSupported() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        if (confirm('🔔 Enable browser reminders for due tasks?\n(You\'ll get notifications even if the app is closed)')) {
+            subscribeToPush();
+        }
+    } else if (Notification.permission === 'granted') {
+        subscribeToPush();  // Auto-subscribe if already allowed
+    }
+}
+
+// Call this in initAppPage() after loadTodos();
