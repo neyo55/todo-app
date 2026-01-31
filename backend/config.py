@@ -11,12 +11,18 @@ class Config:
     SQLALCHEMY_DATABASE_URI = uri or 'sqlite:///protodo.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # === CRITICAL FIX FOR RENDER SSL ERRORS ===
-    # pool_pre_ping: Checks connection alive before using (Fixes "EOF detected")
-    # pool_recycle: Refreshes connection every 5 mins to prevent timeouts
+    # Database Stability Settings (Keeps connection alive)
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 300,
+    }
+
+    # === SCHEDULER SETTINGS (Fix for "Skipped" errors) ===
+    # Allow up to 3 overlapping jobs so emails don't get blocked if server is slow
+    SCHEDULER_API_ENABLED = True
+    SCHEDULER_JOB_DEFAULTS = {
+        'coalesce': False,
+        'max_instances': 3
     }
 
     # === MAIL CONFIGURATION ===
