@@ -1,5 +1,5 @@
 // script.js - ProTodo v2.1 (Restored Chart & List)
-const API_BASE = 'http://127.0.0.1:5000/api'; 
+const API_BASE = '/api'; 
 let todos = [];
 let editModeId = null;
 let currentFilter = 'all';
