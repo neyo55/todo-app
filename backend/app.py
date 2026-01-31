@@ -1,8 +1,8 @@
 # backend/app.py
-# ProTodo v2.1 - Cloud Ready (Avatars & Scheduler Fixed)
+# ProTodo v2.2 - Final Fixes (Timezone & Email Debug)
 
 import os
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify # Added jsonify here
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from flask_apscheduler import APScheduler
@@ -22,7 +22,7 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Enable CORS for all domains (simplifies cloud setup)
+    # Enable CORS
     CORS(app, origins=["*"], supports_credentials=True)
     
     db.init_app(app)
@@ -32,21 +32,17 @@ def create_app():
     app.register_blueprint(todos_bp, url_prefix='/api')
 
     # === PATH SETUP ===
-    # Define where the Frontend and Backend Static folders are
     FRONTEND_FOLDER = os.path.join(os.getcwd(), '..', 'frontend')
     FRONTEND_FOLDER = os.path.abspath(FRONTEND_FOLDER)
     
     BACKEND_STATIC = os.path.join(app.root_path, 'static')
 
-    # === ROUTE 1: SERVE AVATARS (Backend) ===
-    # This tells the server: "If the URL starts with /static/avatars, 
-    # look in the backend/static/avatars folder."
+    # === ROUTE 1: SERVE AVATARS ===
     @app.route('/static/avatars/<path:filename>')
     def serve_avatars(filename):
         return send_from_directory(os.path.join(BACKEND_STATIC, 'avatars'), filename)
 
-    # === ROUTE 2: SERVE FRONTEND (Catch-All) ===
-    # Serves app.html, login.html, etc.
+    # === ROUTE 2: SERVE FRONTEND ===
     @app.route('/')
     def serve_index():
         return send_from_directory(FRONTEND_FOLDER, 'app.html')
@@ -64,8 +60,6 @@ def create_app():
         with app.app_context():
             try:
                 now_utc = datetime.now(timezone.utc)
-                
-                # Fetch active tasks
                 active_todos = Todo.query.filter(Todo.completed == False).all()
 
                 if not active_todos: return
@@ -90,12 +84,10 @@ def create_app():
                     time_remaining = task_time_utc - now_utc
                     minutes_remaining = time_remaining.total_seconds() / 60
 
-                    # === 1. AUTO-COMPLETE LOGIC ===
+                    # 1. AUTO-COMPLETE
                     if minutes_remaining < 0:
                         print(f"   ✅ Auto-Completing: {todo.title}")
                         todo.completed = True
-                        
-                        # Mark subtasks as done
                         if todo.subtasks:
                             new_subtasks = []
                             for sub in todo.subtasks:
@@ -104,7 +96,7 @@ def create_app():
                                 new_subtasks.append(sub_copy)
                             todo.subtasks = new_subtasks
 
-                        # === RECURRENCE GENERATION ===
+                        # RECURRENCE
                         if todo.recurrence != 'never':
                             next_date = None
                             if todo.recurrence == 'daily':
@@ -129,7 +121,6 @@ def create_app():
                                     reminder_sent=False,
                                     subtasks=todo.subtasks 
                                 )
-                                # Reset subtasks
                                 if next_task.subtasks:
                                     reset_subs = []
                                     for s in next_task.subtasks:
@@ -137,14 +128,12 @@ def create_app():
                                         s_reset['completed'] = False
                                         reset_subs.append(s_reset)
                                     next_task.subtasks = reset_subs
-
                                 db.session.add(next_task)
-                                print(f"   🔄 Recurring Task Created: {todo.title}")
 
                         db.session.commit()
                         continue 
 
-                    # === 2. REMINDER LOGIC ===
+                    # 2. REMINDER
                     if not todo.reminder_sent and minutes_remaining <= (todo.reminder_minutes + 1) and minutes_remaining > 0:
                         formatted_time = task_time_local.strftime('%Y-%m-%d %I:%M %p')
                         if user.email:
@@ -164,28 +153,20 @@ def create_app():
 
     return app
 
+# === 1. CREATE APP FIRST (CRITICAL FOR GUNICORN) ===
+app = create_app()
 
-# === DEBUG TOOL: FORCE EMAIL ===
-# This checks if the password works without waiting for the scheduler
+# === 2. THEN ADD DEBUG ROUTES ===
 @app.route('/api/debug-email')
 def debug_email():
     try:
-        # 1. Get credentials from Environment
         user = os.environ.get('MAIL_USERNAME')
-        pwd = os.environ.get('MAIL_PASSWORD')
-        
-        # 2. Try sending immediately
         print(f"Attempting to send test email from {user}...")
-        send_reminder_email("kbneyo55@gmail.com", "ProTodo Test", "This is a test email to confirm connection.")
-        
-        return {"status": "success", "message": "Email sent! Check kbneyo55@gmail.com"}, 200
+        send_reminder_email("kbneyo55@gmail.com", "ProTodo Connection Test", "If you see this, the email connection is PERFECT!")
+        return jsonify({"status": "success", "message": "Email sent! Check inbox."}), 200
     except Exception as e:
         print(f"EMAIL ERROR: {str(e)}")
-        return {"status": "error", "message": str(e)}, 500
-
-
-# === FIX FOR GUNICORN ===
-app = create_app()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
