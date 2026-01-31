@@ -1,0 +1,1 @@
+postgresql://protodo_db_user:bqMX0AGwKkw89mFQv4Iy92T2iEoz0HoE@dpg-d5un22chg0os73b1kca0-a/protodo_db
