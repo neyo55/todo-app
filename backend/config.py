@@ -3,8 +3,7 @@ import os
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev_key_12345'
     
-    # Smart Database Selection
-    # If DATABASE_URL exists (Cloud), use it. Otherwise use local SQLite.
+    # === DATABASE CONFIGURATION ===
     uri = os.environ.get('DATABASE_URL')
     if uri and uri.startswith("postgres://"):
         uri = uri.replace("postgres://", "postgresql://", 1)
@@ -12,7 +11,15 @@ class Config:
     SQLALCHEMY_DATABASE_URI = uri or 'sqlite:///protodo.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
-    # Mail Config (Read from Environment Variables)
+    # === CRITICAL FIX FOR RENDER SSL ERRORS ===
+    # pool_pre_ping: Checks connection alive before using (Fixes "EOF detected")
+    # pool_recycle: Refreshes connection every 5 mins to prevent timeouts
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+    }
+
+    # === MAIL CONFIGURATION ===
     MAIL_SERVER = 'smtp.gmail.com'
     MAIL_PORT = 587
     MAIL_USE_TLS = True
