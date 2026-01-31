@@ -164,6 +164,26 @@ def create_app():
 
     return app
 
+
+# === DEBUG TOOL: FORCE EMAIL ===
+# This checks if the password works without waiting for the scheduler
+@app.route('/api/debug-email')
+def debug_email():
+    try:
+        # 1. Get credentials from Environment
+        user = os.environ.get('MAIL_USERNAME')
+        pwd = os.environ.get('MAIL_PASSWORD')
+        
+        # 2. Try sending immediately
+        print(f"Attempting to send test email from {user}...")
+        send_reminder_email("kbneyo55@gmail.com", "ProTodo Test", "This is a test email to confirm connection.")
+        
+        return {"status": "success", "message": "Email sent! Check kbneyo55@gmail.com"}, 200
+    except Exception as e:
+        print(f"EMAIL ERROR: {str(e)}")
+        return {"status": "error", "message": str(e)}, 500
+
+
 # === FIX FOR GUNICORN ===
 app = create_app()
 

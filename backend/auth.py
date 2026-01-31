@@ -1,6 +1,3 @@
-# backend/auth.py
-# ProTodo v1.5 - Password Security & Validations
-
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
@@ -9,7 +6,7 @@ from mailer import send_reset_code
 import random
 import string
 import os
-import re # [v1.5] Regex for password validation
+import re 
 from datetime import datetime, timedelta, timezone
 
 auth_bp = Blueprint('auth', __name__)
@@ -19,12 +16,12 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# [v1.5] PASSWORD VALIDATOR FUNCTION
+# PASSWORD VALIDATOR
 def is_strong_password(password):
     if len(password) < 8: return False
-    if not re.search(r"[A-Z]", password): return False # At least 1 Uppercase
-    if not re.search(r"[0-9]", password): return False # At least 1 Number
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password): return False # At least 1 Special
+    if not re.search(r"[A-Z]", password): return False 
+    if not re.search(r"[0-9]", password): return False 
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password): return False 
     return True
 
 # SIGNUP ROUTE
@@ -32,7 +29,6 @@ def is_strong_password(password):
 def signup():
     data = request.get_json()
     
-    # [v1.5] Validate Password Strength
     password = data['password']
     if not is_strong_password(password):
         return jsonify({
@@ -42,10 +38,12 @@ def signup():
     if User.query.filter_by(email=data['email']).first():
         return jsonify({"message": "Email taken"}), 400
     
+    # === FIX 1: Capture Timezone from Frontend ===
     user = User(
         email=data['email'], 
         name=data.get('name', ''),
-        phone=data.get('phone', '')
+        phone=data.get('phone', ''),
+        timezone=data.get('timezone', 'UTC')  # Default to UTC if missing
     )
     user.set_password(password)
     db.session.add(user)
@@ -61,13 +59,11 @@ def login():
     if user and user.check_password(data['password']):
         token = create_access_token(identity=str(user.id))
         
-        # === FIX: Use Relative Paths (Works on Local AND Cloud) ===
+        # Use Relative Paths for Cloud Compatibility
         avatar_url = user.avatar
         if avatar_url and not avatar_url.startswith('http') and not avatar_url.startswith('/'):
-            # If it's just "image.png", make it "/static/avatars/image.png"
             avatar_url = f"/static/avatars/{user.avatar}"
         elif avatar_url and avatar_url.startswith('/'):
-            # If it's already "/static/...", leave it alone.
             avatar_url = user.avatar
 
         return jsonify({
@@ -106,16 +102,20 @@ def update_profile():
         file = request.files['avatar']
         if file and allowed_file(file.filename):
             filename = secure_filename(f"user_{user_id}_{file.filename}")
+            # Ensure we save to backend/static/avatars
             save_dir = os.path.join(current_app.root_path, 'static', 'avatars')
             os.makedirs(save_dir, exist_ok=True)
             file.save(os.path.join(save_dir, filename))
+            # Save strictly relative path
             user.avatar = f"/static/avatars/{filename}"
 
     db.session.commit()
-    full_avatar_url = f"http://127.0.0.1:5000{user.avatar}" if user.avatar else None
-    return jsonify({"message": "Profile updated", "avatar": full_avatar_url})
+    
+    # === FIX 2: Return Relative Path (No localhost IP) ===
+    # This lets the frontend decide the domain (works on Render)
+    return jsonify({"message": "Profile updated", "avatar": user.avatar})
 
-# FORGET PASSWORD 
+# FORGOT PASSWORD 
 @auth_bp.route('/forgot-password', methods=['POST'])
 def forgot_password():
     data = request.get_json()
