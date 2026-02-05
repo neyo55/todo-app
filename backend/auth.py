@@ -1,3 +1,5 @@
+# backend/auth.py
+
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
@@ -8,6 +10,8 @@ import string
 import os
 import re 
 from datetime import datetime, timedelta, timezone
+import boto3  # <--- NEW IMPORT
+from botocore.exceptions import NoCredentialsError # <--- NEW IMPORT
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -38,12 +42,11 @@ def signup():
     if User.query.filter_by(email=data['email']).first():
         return jsonify({"message": "Email taken"}), 400
     
-    # === FIX 1: Capture Timezone from Frontend ===
     user = User(
         email=data['email'], 
         name=data.get('name', ''),
         phone=data.get('phone', ''),
-        timezone=data.get('timezone', 'UTC')  # Default to UTC if missing
+        timezone=data.get('timezone', 'UTC')
     )
     user.set_password(password)
     db.session.add(user)
@@ -59,12 +62,15 @@ def login():
     if user and user.check_password(data['password']):
         token = create_access_token(identity=str(user.id))
         
-        # Use Relative Paths for Cloud Compatibility
+        # === CLOUD COMPATIBILITY FIX ===
+        # If the avatar is already a full URL (from S3), use it as is.
+        # If it is a relative path (old local files), prepend static.
         avatar_url = user.avatar
         if avatar_url and not avatar_url.startswith('http') and not avatar_url.startswith('/'):
             avatar_url = f"/static/avatars/{user.avatar}"
         elif avatar_url and avatar_url.startswith('/'):
             avatar_url = user.avatar
+        # If it starts with 'http', it's an S3 URL, so we leave it alone.
 
         return jsonify({
             "token": token,
@@ -79,7 +85,7 @@ def login():
         })
     return jsonify({"message": "Invalid credentials"}), 401
 
-# UPDATE PROFILE ROUTE
+# UPDATE PROFILE ROUTE (AWS S3 IMPLEMENTED)
 @auth_bp.route('/profile', methods=['PUT'])
 @jwt_required()
 def update_profile():
@@ -95,24 +101,58 @@ def update_profile():
     if 'new_password' in request.form and request.form['new_password']:
         new_pass = request.form['new_password']
         if not is_strong_password(new_pass):
-            return jsonify({"message": "Password too weak. Must be 8+ chars, 1 Upper, 1 Number, 1 Symbol."}), 400
+            return jsonify({"message": "Password too weak."}), 400
         user.set_password(new_pass)
 
+    # === AWS S3 UPLOAD LOGIC ===
     if 'avatar' in request.files:
         file = request.files['avatar']
         if file and allowed_file(file.filename):
+            # 1. Create a safe filename
             filename = secure_filename(f"user_{user_id}_{file.filename}")
-            # Ensure we save to backend/static/avatars
-            save_dir = os.path.join(current_app.root_path, 'static', 'avatars')
-            os.makedirs(save_dir, exist_ok=True)
-            file.save(os.path.join(save_dir, filename))
-            # Save strictly relative path
-            user.avatar = f"/static/avatars/{filename}"
+
+            # 2. Add the folder path (This creates the "avatars" folder automatically)
+            s3_key = f"avatars/{filename}"
+
+            # 1. Get Credentials from Environment
+            s3_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+            s3_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+            s3_bucket = os.environ.get('AWS_BUCKET_NAME')
+            s3_region = os.environ.get('AWS_REGION')
+
+            if not all([s3_access_key, s3_secret_key, s3_bucket, s3_region]):
+                return jsonify({"message": "Server S3 configuration missing"}), 500
+
+            # 2. Initialize S3 Client
+            s3 = boto3.client(
+                's3',
+                aws_access_key_id=s3_access_key,
+                aws_secret_access_key=s3_secret_key,
+                region_name=s3_region
+            )
+
+            try:
+                # 3. Upload File to S3
+                # 'ACL': 'public-read' makes it visible to the browser
+                # 'ContentType' ensures the browser knows it's an image, not a download
+                s3.upload_fileobj(
+                    file,
+                    s3_bucket,
+                    s3_key,  # This is the "filename" in the bucket, including the folder path
+                    ExtraArgs={
+                        "ACL": "public-read",
+                        "ContentType": file.content_type
+                    }
+                )
+
+                # 4. Save the FULL Public URL to the Database including the folder 
+                user.avatar = f"https://{s3_bucket}.s3.{s3_region}.amazonaws.com/{s3_key}"
+
+            except Exception as e:
+                print(f"S3 Upload Error: {e}")
+                return jsonify({"message": "Failed to upload image to cloud"}), 500
 
     db.session.commit()
-    
-    # === FIX 2: Return Relative Path (No localhost IP) ===
-    # This lets the frontend decide the domain (works on Render)
     return jsonify({"message": "Profile updated", "avatar": user.avatar})
 
 # FORGOT PASSWORD 
@@ -146,7 +186,7 @@ def reset_password():
     
     new_pass = data['new_password']
     if not is_strong_password(new_pass):
-        return jsonify({"message": "Password too weak. Must be 8+ chars, 1 Upper, 1 Number, 1 Symbol."}), 400
+        return jsonify({"message": "Password too weak."}), 400
 
     user.set_password(new_pass)
     user.reset_token = None

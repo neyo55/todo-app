@@ -156,17 +156,6 @@ def create_app():
 # === 1. CREATE APP FIRST (CRITICAL FOR GUNICORN) ===
 app = create_app()
 
-# === 2. THEN ADD DEBUG ROUTES ===
-@app.route('/api/debug-email')
-def debug_email():
-    try:
-        user = os.environ.get('MAIL_USERNAME')
-        print(f"Attempting to send test email from {user}...")
-        send_reminder_email("kbneyo55@gmail.com", "ProTodo Connection Test", "If you see this, the email connection is PERFECT!")
-        return jsonify({"status": "success", "message": "Email sent! Check inbox."}), 200
-    except Exception as e:
-        print(f"EMAIL ERROR: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
+# === 2. RUN APP ===
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

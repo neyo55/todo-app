@@ -1,3 +1,7 @@
+kbneyo55@gmail.com
+ProTodo@2026
+
+
 The other platform I mentioned is **Cloudinary**.
 
 While you wait for the deployment, here is a quick breakdown of why I suggested them:
@@ -16,3 +20,10 @@ While you wait for the deployment, here is a quick breakdown of why I suggested 
 
 **Why you will need one of these later:**
 Right now, your app saves profile pictures to the Render server's hard drive. On the **Free Tier**, Render "wipes" that hard drive every time you deploy or if the server sleeps. Moving to Cloudinary or S3 solves that problem permanently.
+
+
+
+
+docker-compose up --build
+docker-compose down 
+docker-compose logs -f web

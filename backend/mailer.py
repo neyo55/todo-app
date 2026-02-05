@@ -46,9 +46,35 @@ def send_email(to_email, subject, body):
         print(f"❌ EMAIL FAILED: {e}")
         raise 
 
-# Wrappers
+# Wrapper for Task Reminders (Updated Content)
 def send_reminder_email(to_email, task_title, due_date):
-    send_email(to_email, f"Reminder: {task_title}", f"Your task '{task_title}' is due at {due_date}.")
+    subject = f"🔔 Reminder: {task_title}"
+    
+    body = f"""Hello there,
 
+Just a friendly nudge about your upcoming task:
+
+📌 Task: {task_title}
+⏰ Due: {due_date}
+
+You've got this!
+
+Best regards,
+The ProTodo Team
+"""
+    send_email(to_email, subject, body)
+
+# Wrapper for Password Reset
 def send_reset_code(to_email, code):
-    send_email(to_email, "Reset Code", f"Your code is: {code}")
+    subject = "🔒 Reset Your ProTodo Password"
+    body = f"""Hello,
+
+We received a request to reset your password. Here is your secure code:
+
+Code: {code}
+
+This code expires in 15 minutes. If you did not request this, please ignore this email.
+
+Best,
+The ProTodo Team"""
+    send_email(to_email, subject, body)

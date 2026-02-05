@@ -179,7 +179,12 @@
             </div>
             <div class="form-group">
                 <label>Phone Number</label>
-                <input type="tel" id="profile-phone" placeholder="+234...">
+                <input 
+                    type="tel" 
+                    id="profile-phone" 
+                    placeholder="+234..."
+                    oninput="this.value = this.value.replace(/[^0-9]/g, '')"
+                >
             </div>
             <div class="form-group">
                 <label>Timezone</label>

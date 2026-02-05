@@ -6,3 +6,4 @@ instance/
 *.sqlite3
 .env
 venv/
+database/note-database.txt

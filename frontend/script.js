@@ -1,4 +1,4 @@
-// script.js - ProTodo v2.1 (Restored Chart & List)
+// script.js - ProTodo v2.2 (S3 & Placeholder Fixes)
 const API_BASE = '/api'; 
 let todos = [];
 let editModeId = null;
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Notification.requestPermission();
     }
     setInterval(checkBrowserReminders, 30000); 
-    // Auto-refresh data every 60s to catch server-side auto-completions
+    // Auto-refresh data every 60s
     setInterval(() => { if(localStorage.getItem('token')) loadTodos(); }, 60000);
 
     // 3. Calendar
@@ -128,6 +128,7 @@ window.saveProfile = function() {
             showToast('Profile Updated!', 'success');
             const user = JSON.parse(localStorage.getItem('user')) || {};
             user.nickname = document.getElementById('profile-nickname').value;
+            // Update local storage with new avatar URL from S3
             if(data.avatar) user.avatar = data.avatar;
             localStorage.setItem('user', JSON.stringify(user));
             loadHeaderInfo();
@@ -337,7 +338,6 @@ function renderTodos() {
         const subtasks = Array.isArray(todo.subtasks) ? todo.subtasks : [];
         if (subtasks.length > 0) {
             const total = subtasks.length;
-            // Visual fix: If todo is complete, show full progress
             const done = todo.completed ? total : subtasks.filter(s => s.completed).length;
             const percent = Math.round((done / total) * 100);
             progressHtml = `
@@ -551,8 +551,32 @@ function updateBulkUI() { const c = document.querySelectorAll('.bulk-check:check
 function initTheme() { if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark-mode'); }
 function toggleTheme() { document.body.classList.toggle('dark-mode'); localStorage.setItem('theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light'); }
 function switchView(view) { ['todos', 'dashboard', 'profile'].forEach(v => document.getElementById(`${v}-view`).classList.add('hidden')); document.getElementById(`${view}-view`).classList.remove('hidden'); document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active')); if(view === 'todos' || view === 'dashboard') { const btn = document.querySelector(`.tabs button[data-view="${view}"]`); if(btn) btn.classList.add('active'); } if (view === 'dashboard') updateDashboard(); }
-function loadHeaderInfo() { const u = JSON.parse(localStorage.getItem('user')) || {}; if(u.nickname) document.getElementById('header-nickname').innerText = u.nickname; const img = document.getElementById('header-avatar'); if(u.avatar) img.src = u.avatar; document.getElementById('user-header').classList.remove('hidden'); }
-function loadProfileData() { const u = JSON.parse(localStorage.getItem('user')) || {}; document.getElementById('profile-name').value = u.name || ''; document.getElementById('profile-nickname').value = u.nickname || ''; document.getElementById('profile-phone').value = u.phone || ''; document.getElementById('profile-preview').src = u.avatar || 'https://via.placeholder.com/120'; }
+
+// [FIXED] - Replaced placeholder with UI Avatars
+function loadHeaderInfo() { 
+    const u = JSON.parse(localStorage.getItem('user')) || {}; 
+    if(u.nickname) document.getElementById('header-nickname').innerText = u.nickname; 
+    const img = document.getElementById('header-avatar'); 
+    
+    // Fallback if avatar is missing
+    const avatarSrc = u.avatar ? u.avatar : `https://ui-avatars.com/api/?name=${u.name || 'User'}&background=random`;
+    img.src = avatarSrc; 
+    
+    document.getElementById('user-header').classList.remove('hidden'); 
+}
+
+// [FIXED] - Replaced placeholder with UI Avatars
+function loadProfileData() { 
+    const u = JSON.parse(localStorage.getItem('user')) || {}; 
+    document.getElementById('profile-name').value = u.name || ''; 
+    document.getElementById('profile-nickname').value = u.nickname || ''; 
+    document.getElementById('profile-phone').value = u.phone || ''; 
+    
+    // Fallback if avatar is missing
+    const avatarSrc = u.avatar ? u.avatar : `https://ui-avatars.com/api/?name=${u.name || 'User'}&background=random`;
+    document.getElementById('profile-preview').src = avatarSrc; 
+}
+
 function importTodos(input) { const file = input.files[0]; const reader = new FileReader(); reader.onload = async (e) => { try { const data = JSON.parse(e.target.result); for (const t of data) { await authenticatedFetch(`${API_BASE}/todos`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(t) }); } loadTodos(); showToast('Import Successful!', 'success'); } catch(e) { showToast("Invalid JSON", "error"); } }; reader.readAsText(file); }
 function exportTodos() { let csv = 'Title,Due,Notes,Category,Priority\n'; todos.forEach(t => csv += `"${t.title}","${t.due_date}","${t.notes}","${t.category}","${t.priority}"\n`); const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'protodo.csv'; a.click(); }
 function togglePass(id) { const i = document.getElementById(id); const ic = i.nextElementSibling.querySelector('i'); if (i.type === "password") { i.type = "text"; ic.classList.replace('fa-eye', 'fa-eye-slash'); } else { i.type = "password"; ic.classList.replace('fa-eye-slash', 'fa-eye'); } }
