@@ -35,3 +35,4 @@ urllib3
 Werkzeug
 email-validator
 boto3
+prometheus-flask-exporter

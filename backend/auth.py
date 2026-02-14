@@ -5,13 +5,13 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from werkzeug.utils import secure_filename
 from models import db, User
 from mailer import send_reset_code
-import random
+import secrets # <--- CHANGED: Use secrets instead of random
 import string
 import os
 import re 
 from datetime import datetime, timedelta, timezone
-import boto3  # <--- NEW IMPORT
-from botocore.exceptions import NoCredentialsError # <--- NEW IMPORT
+import boto3 
+from botocore.exceptions import NoCredentialsError 
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -164,7 +164,9 @@ def forgot_password():
     if not user:
         return jsonify({"message": "If that email exists, a code has been sent."}), 200
     
-    code = ''.join(random.choices(string.digits, k=6))
+    # FIXED: Use SECRETS instead of RANDOM for secure code generation
+    code = ''.join(secrets.choice(string.digits) for _ in range(6))
+    
     user.reset_token = code
     user.reset_token_expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
     db.session.commit()

@@ -1,9 +1,11 @@
 # backend/app.py
-# ProTodo v2.2 - Final Fixes (Timezone & Email Debug)
+# ProTodo v2.3 - Security Hardening & Fixes
 
 import os
-from flask import Flask, send_from_directory, jsonify # Added jsonify here
+import logging # <--- ADDED for logging errors
+from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
+from prometheus_flask_exporter import PrometheusMetrics
 from flask_jwt_extended import JWTManager
 from flask_apscheduler import APScheduler
 from datetime import datetime, timezone, timedelta
@@ -24,6 +26,13 @@ def create_app():
 
     # Enable CORS
     CORS(app, origins=["*"], supports_credentials=True)
+
+    # === NEW: PROMETHEUS METRICS ===
+    # This automatically creates the /metrics endpoint
+    metrics = PrometheusMetrics(app)
+    
+    # Optional: Added info about the app version
+    metrics.info('app_info', 'Application info', version='1.0.0')
     
     db.init_app(app)
     jwt = JWTManager(app)
@@ -142,11 +151,15 @@ def create_app():
                         todo.reminder_sent = True
                         db.session.commit()
             except Exception as e:
-                print(f"Error in scheduler: {e}")
+                # FIXED: Log error instead of print/pass
+                logging.error(f"Error in scheduler: {e}")
                 db.session.rollback()
 
-    try: scheduler.start()
-    except Exception: pass
+    try: 
+        scheduler.start()
+    except Exception as e: 
+        # FIXED: Log error instead of pass
+        logging.warning(f"Scheduler failed to start (or already running): {e}")
 
     with app.app_context():
         db.create_all()
@@ -158,4 +171,7 @@ app = create_app()
 
 # === 2. RUN APP ===
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # FIXED: Secure Debug Mode
+    # Only use debug if explicitly told to via environment variable
+    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
+    app.run(debug=debug_mode, host='0.0.0.0', port=5000) # nosec
