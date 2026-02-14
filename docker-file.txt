@@ -44,7 +44,29 @@ volumes:
 
 
 
+# ubuntu server docker-compose file using RDS
+version: '3.8'
 
+services:
+  web:
+    build: .
+    ports:
+      - "80:5000"  # Opens Port 80 (HTTP) to the world
+    restart: always # Auto-restart if it crashes
+    environment:
+      # We just list the keys here. Docker will pull the ACTUAL values 
+      # from the .env file created.
+      - SECRET_KEY
+      - DATABASE_URL
+      - MAIL_SERVER
+      - MAIL_PORT
+      - MAIL_USERNAME
+      - MAIL_PASSWORD
+      - MAIL_DEFAULT_SENDER
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_BUCKET_NAME
+      - AWS_REGION 
 
 
 
