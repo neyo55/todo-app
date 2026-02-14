@@ -246,3 +246,65 @@ echo "protodo-key.pem" >> .gitignore
 # 3. Verify it's ignored
 cat .gitignore
 # (You should see your key file at the bottom)
+
+
+This is **GitHub's Secret Scanning** saving you from a massive security leak! 🛡️
+
+GitHub blocked your push because it detected the **Sendinblue SMTP Key** inside a file named `grafana-alerting.md`. Even though you removed it from `.env`, you likely pasted it into this markdown file as a note or backup.
+
+You cannot push until this secret is removed from your **git history**.
+
+### 🛠️ How to Fix This (The "Undo" Method)
+
+Since you haven't successfully pushed yet, we can simply "undo" your last commit locally, remove the secret, and try again.
+
+Run these commands in your terminal **one by one**:
+
+#### 1. Undo the last commit (but keep your changes)
+
+```bash
+git reset --soft HEAD~1
+
+```
+
+*(This cancels the commit command you ran previously, but leaves all your files "staged" and ready to be edited).*
+
+#### 2. Unstage the file with the secret
+
+```bash
+git restore --staged grafana-alerting.md
+
+```
+
+#### 3. Edit the file
+
+* Open `grafana-alerting.md` in your code editor.
+* **Delete the secret key** (or replace it with `REDACTED` or `******`).
+* Save the file.
+
+#### 4. Re-add and Commit
+
+Now that the file is clean, add it back and commit.
+
+```bash
+git add grafana-alerting.md
+git commit -m "Add Grafana alerting docs (Sanitized)"
+
+```
+
+#### 5. Push Again
+
+```bash
+git push origin main
+
+```
+
+---
+
+### ⚠️ Critical Security Reminder
+
+Because this key was visible in your local git history (and you pasted it in our chat earlier), **you must consider this key compromised.**
+
+1. **Rotate the Key:** Go to Brevo (Sendinblue) and generate a new SMTP key.
+2. **Update the Server:** SSH into your EC2 instance and update the `.env` file with the *new* key.
+3. **Update GitHub Secrets:** If you stored this in GitHub Actions secrets, update it there too.

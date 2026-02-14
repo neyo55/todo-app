@@ -28,6 +28,8 @@ docker-compose up --build
 docker-compose down 
 docker-compose logs -f web
 
+# Command to restart grafana container 
+sudo docker compose up -d grafana
 
 # View the last 100 lines and "follow" (-f) new logs as they happen
 cd todo-app
