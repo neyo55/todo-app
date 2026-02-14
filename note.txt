@@ -38,7 +38,7 @@ sudo docker compose logs -f --tail=100 web
 # "Take port 3000 on the server and map it to port 3000 on my laptop"
 ssh -i "protodo-key.pem" -L 3000:localhost:3000 ubuntu@18.199.93.77
 
-# Command to clear unused images and build cache (I need to add this as a cronjob for it to always clear the unusedimages build cache)
+# Command to clear unused images and build cache (I need to add this as a cronjob for it to always clear the unused images build cache)
 sudo docker system prune -a -f
 
 

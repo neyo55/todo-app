@@ -1,1 +1,10 @@
-sudo docker compose exec web python -c "from app import db, create_app; db.create_all(app=create_app())"
+# Enter the Python Shell inside the container:
+sudo docker compose exec -it web python
+
+# Type these lines one by one (press Enter after each):
+from app import create_app, db
+app = create_app()
+ctx = app.app_context()
+ctx.push()
+db.create_all()
+exit()

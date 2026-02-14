@@ -308,3 +308,52 @@ Because this key was visible in your local git history (and you pasted it in our
 1. **Rotate the Key:** Go to Brevo (Sendinblue) and generate a new SMTP key.
 2. **Update the Server:** SSH into your EC2 instance and update the `.env` file with the *new* key.
 3. **Update GitHub Secrets:** If you stored this in GitHub Actions secrets, update it there too.
+
+
+This is a standard Git error. It usually happens when you use `reset` commands—your laptop "forgot" about some history that is already on GitHub, so now they are out of sync.
+
+### The Fix: Rebase and Push
+
+We need to tell Git: *"Download the latest history from GitHub, and put my new changes on top of it."*
+
+Run these commands in order:
+
+**1. Sync with GitHub**
+
+```bash
+git pull origin main --rebase
+
+```
+
+*(This might successfully rewind and reapply your commits. If it says "Successfully rebased", you are good).*
+
+**2. Verify the Secret is Gone (Critical!)**
+You ran `git add` very quickly after restoring. **Did you actually open the file and delete the key?**
+
+* Open `grafana-alerting.md` in your code editor.
+* **Double-check** that the API Key is deleted or replaced with `******`.
+* Save the file.
+* *(If you had to edit it again, run `git add .` and `git commit --amend --no-edit` before pushing).*
+
+**3. Push Again**
+
+```bash
+git push origin main
+
+```
+
+---
+
+### What to do if `git pull --rebase` gives a "Conflict" error?
+
+If Step 1 stops and complains about "CONFLICT", do this:
+
+1. It implies GitHub already has `prometheus.yml` or another file you are trying to add.
+2. Since you are the only developer and you want your current laptop version to be the "Truth", you can force the update:
+```bash
+git push origin main --force
+
+```
+
+
+*(⚠️ Only do this force push if you are sure no one else is pushing code to this repository).*
